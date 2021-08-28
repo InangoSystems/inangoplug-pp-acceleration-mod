@@ -40,11 +40,6 @@ static u32 pp_size;
 static u32 pp_capacity;
 static struct spinlock pp_sessions_lock;
 
-// NOTE: use these function when you need to lock both spinlocks
-// DO NOT lock both spinlocks in one function manually
-static void lock_flows_and_pp_sessions(void);
-static void unlock_flows_and_pp_sessions(void);
-
 static bool is_eligible_for_update(u32 pp_session, u64 current_time,
 				   u64 threshold);
 static pp_am_status_ret
@@ -95,12 +90,13 @@ pp_am_status_ret pp_am_db_init()
 pp_am_status_ret pp_am_db_flow_add(struct pp_am_db_session_entry *flow,
 				   u32 *am_id)
 {
+	unsigned long flags;
 	pp_am_status_ret rc = PP_AM_OK;
 
 	AM_LOG_DBG("add flow, pp_session_handle = %u; flows_size: %u\n",
 		   flow->pp_session_handle, flows_size);
 
-	spin_lock(&flows_lock);
+	spin_lock_irqsave(&flows_lock, flags);
 
 	if (flows_size == flows_capacity) {
 		AM_LOG_ERR(
@@ -129,7 +125,7 @@ pp_am_status_ret pp_am_db_flow_add(struct pp_am_db_session_entry *flow,
 	rc = PP_AM_OK;
 
 func_exit:
-	spin_unlock(&flows_lock);
+	spin_unlock_irqrestore(&flows_lock, flags);
 	return rc;
 }
 EXPORT_SYMBOL(pp_am_db_flow_add);
@@ -137,12 +133,13 @@ EXPORT_SYMBOL(pp_am_db_flow_add);
 pp_am_status_ret pp_am_db_flow_rm(struct pp_am_db_session_entry *flow,
 				  u32 am_id)
 {
+	unsigned long flags;
 	pp_am_status_ret rc = PP_AM_OK;
 
 	if (am_id <= 0 || am_id >= PP_AM_DB_MAX_SESSION || flows_size <= 0)
 		return PP_AM_GENERIC_FAIL;
 
-	spin_lock(&flows_lock);
+	spin_lock_irqsave(&flows_lock, flags);
 
 	// Nothing to remove, it was requested to remove already removed element
 	if (!flows[am_id].busy) {
@@ -171,7 +168,7 @@ pp_am_status_ret pp_am_db_flow_rm(struct pp_am_db_session_entry *flow,
 	rc = PP_AM_OK;
 
 func_exit:
-	spin_unlock(&flows_lock);
+	spin_unlock_irqrestore(&flows_lock, flags);
 	return rc;
 }
 EXPORT_SYMBOL(pp_am_db_flow_rm);
@@ -179,6 +176,7 @@ EXPORT_SYMBOL(pp_am_db_flow_rm);
 pp_am_status_ret pp_am_db_flow_set(struct pp_am_db_session_entry *flow,
 				   u32 am_id)
 {
+	unsigned long flags;
 	pp_am_status_ret rc = PP_AM_OK;
 
 	AM_LOG_DBG(
@@ -189,7 +187,7 @@ pp_am_status_ret pp_am_db_flow_set(struct pp_am_db_session_entry *flow,
 	if (am_id <= 0 || am_id >= PP_AM_DB_MAX_SESSION)
 		return PP_AM_GENERIC_FAIL;
 
-	spin_lock(&flows_lock);
+	spin_lock_irqsave(&flows_lock, flags);
 
 	if (!flows[am_id].busy) {
 		AM_LOG_ERR("unable to reset element that wasn't set: %u\n",
@@ -203,7 +201,7 @@ pp_am_status_ret pp_am_db_flow_set(struct pp_am_db_session_entry *flow,
 	rc = PP_AM_OK;
 
 func_exit:
-	spin_unlock(&flows_lock);
+	spin_unlock_irqrestore(&flows_lock, flags);
 	return rc;
 }
 EXPORT_SYMBOL(pp_am_db_flow_set);
@@ -211,12 +209,13 @@ EXPORT_SYMBOL(pp_am_db_flow_set);
 pp_am_status_ret pp_am_db_flow_get(struct pp_am_db_session_entry *flow,
 				   u32 am_id)
 {
+	unsigned long flags;
 	pp_am_status_ret rc = PP_AM_OK;
 
 	if (am_id <= 0 || am_id >= PP_AM_DB_MAX_SESSION)
 		return PP_AM_GENERIC_FAIL;
 
-	spin_lock(&flows_lock);
+	spin_lock_irqsave(&flows_lock, flags);
 
 	if (!flows[am_id].busy) {
 		AM_LOG_ERR("unable to get element that wasn't set: %u\n",
@@ -230,19 +229,20 @@ pp_am_status_ret pp_am_db_flow_get(struct pp_am_db_session_entry *flow,
 	rc = PP_AM_OK;
 
 func_exit:
-	spin_unlock(&flows_lock);
+	spin_unlock_irqrestore(&flows_lock, flags);
 	return rc;
 }
 EXPORT_SYMBOL(pp_am_db_flow_get);
 
 pp_am_status_ret pp_am_db_flow_chain_cleanup(u32 am_id, pp_am_flow_chain_traverse_order order)
 {
+	unsigned long flags;
 	pp_am_status_ret rc = PP_AM_OK;
 	struct flow_entry *flow;
 	u32 next_am_id;
 	AM_LOG_DBG("%s: Cleanup chain for am_id=%u", __func__, am_id);
 
-	spin_lock(&flows_lock);
+	spin_lock_irqsave(&flows_lock, flags);
 	while (am_id) {
 		if (am_id <= 0 || am_id >= PP_AM_DB_MAX_SESSION || !flows[am_id].busy) {
 			AM_LOG_ERR("%s: Failed to get flow: am_id=%u", __func__, am_id);
@@ -265,13 +265,14 @@ pp_am_status_ret pp_am_db_flow_chain_cleanup(u32 am_id, pp_am_flow_chain_travers
 	}
 
 func_exit:
-	spin_unlock(&flows_lock);
+	spin_unlock_irqrestore(&flows_lock, flags);
 	return rc;
 }
 EXPORT_SYMBOL(pp_am_db_flow_chain_cleanup);
 
 pp_am_status_ret pp_am_db_pp_session_add(struct pp_am_db_pp_entry *pp_entry)
 {
+	unsigned long flags;
 	struct pp_am_db_pp_entry *tmp;
 
 	AM_LOG_DBG("add pp session, am_id = %u, pp_session = %u \n",
@@ -281,13 +282,13 @@ pp_am_status_ret pp_am_db_pp_session_add(struct pp_am_db_pp_entry *pp_entry)
 	    pp_entry->pp_session >= PP_AM_DB_MAX_SESSION)
 		return PP_AM_GENERIC_FAIL;
 
-	spin_lock(&pp_sessions_lock);
+	spin_lock_irqsave(&pp_sessions_lock, flags);
 
 	tmp = &pp_entries[pp_entry->pp_session];
 	memcpy(tmp, pp_entry, sizeof(struct pp_am_db_pp_entry));
 	pp_size++;
 
-	spin_unlock(&pp_sessions_lock);
+	spin_unlock_irqrestore(&pp_sessions_lock, flags);
 
 	return PP_AM_OK;
 }
@@ -295,6 +296,7 @@ EXPORT_SYMBOL(pp_am_db_pp_session_add);
 
 pp_am_status_ret pp_am_db_pp_session_rm(struct pp_am_db_pp_entry *pp_entry)
 {
+	unsigned long flags;
 	struct pp_am_db_pp_entry *db_entry;
 	AM_LOG_DBG("delete pp session, am_id = %u, pp_session = %u \n",
 		   pp_entry->am_id, pp_entry->pp_session);
@@ -303,14 +305,14 @@ pp_am_status_ret pp_am_db_pp_session_rm(struct pp_am_db_pp_entry *pp_entry)
 	    pp_entry->pp_session >= PP_AM_DB_MAX_SESSION)
 		return PP_AM_GENERIC_FAIL;
 
-	spin_lock(&pp_sessions_lock);
+	spin_lock_irqsave(&pp_sessions_lock, flags);
 
 	db_entry = &pp_entries[pp_entry->pp_session];
 	db_entry->am_id = PP_AM_DB_MAX_SESSION;
 
 	pp_size--;
 
-	spin_unlock(&pp_sessions_lock);
+	spin_unlock_irqrestore(&pp_sessions_lock, flags);
 
 	return PP_AM_OK;
 }
@@ -318,6 +320,7 @@ EXPORT_SYMBOL(pp_am_db_pp_session_rm);
 
 pp_am_status_ret pp_am_db_pp_session_set(struct pp_am_db_pp_entry *pp_entry)
 {
+	unsigned long flags;
 	struct pp_am_db_pp_entry *db_entry;
 
 	AM_LOG_DBG("set pp session, am_id = %u, pp_session = %u \n",
@@ -327,12 +330,12 @@ pp_am_status_ret pp_am_db_pp_session_set(struct pp_am_db_pp_entry *pp_entry)
 	    pp_entry->pp_session >= PP_AM_DB_MAX_SESSION)
 		return PP_AM_GENERIC_FAIL;
 
-	spin_lock(&pp_sessions_lock);
+	spin_lock_irqsave(&pp_sessions_lock, flags);
 
 	db_entry = &pp_entries[pp_entry->pp_session];
 	memcpy(db_entry, pp_entry, sizeof(struct pp_am_db_pp_entry));
 
-	spin_unlock(&pp_sessions_lock);
+	spin_unlock_irqrestore(&pp_sessions_lock, flags);
 
 	return PP_AM_OK;
 }
@@ -340,16 +343,17 @@ EXPORT_SYMBOL(pp_am_db_pp_session_set);
 
 pp_am_status_ret pp_am_db_pp_session_get(struct pp_am_db_pp_entry *pp_entry)
 {
+	unsigned long flags;
 	if (pp_entry->pp_session <= 0 ||
 	    pp_entry->pp_session >= PP_AM_DB_MAX_SESSION)
 		return PP_AM_GENERIC_FAIL;
 
-	spin_lock(&pp_sessions_lock);
+	spin_lock_irqsave(&pp_sessions_lock, flags);
 
 	memcpy(pp_entry, &pp_entries[pp_entry->pp_session],
 	       sizeof(struct pp_am_db_pp_entry));
 
-	spin_unlock(&pp_sessions_lock);
+	spin_unlock_irqrestore(&pp_sessions_lock, flags);
 
 	return PP_AM_OK;
 }
@@ -400,11 +404,14 @@ size_t for_each_pp_entry_that_needs_update(
 	void (*func)(struct pp_am_db_pp_entry *entry), size_t requested_amount,
 	u32 *last_handle)
 {
+	unsigned long flags1, flags2;
 	size_t eligible_session_amount = 0;
 	u32 current_session = *last_handle;
 	u64 current_time = get_jiffies_64();
 
-	lock_flows_and_pp_sessions();
+	spin_lock_irqsave(&flows_lock, flags1);
+	spin_lock_irqsave(&pp_sessions_lock, flags2);
+
 	if (pp_size < requested_amount)
 		requested_amount = pp_size;
 	AM_LOG_DBG("%s: requested size=%u\n", __func__, requested_amount);
@@ -432,7 +439,9 @@ size_t for_each_pp_entry_that_needs_update(
 		if (current_session == *last_handle)
 			break;
 	}
-	unlock_flows_and_pp_sessions();
+
+	spin_unlock_irqrestore(&pp_sessions_lock, flags2);
+	spin_unlock_irqrestore(&flows_lock, flags1);
 
 	*last_handle = current_session;
 	return eligible_session_amount;
@@ -441,10 +450,17 @@ EXPORT_SYMBOL(for_each_pp_entry_that_needs_update);
 
 int with_db_locked(int (*func)(void *data), void *data)
 {
+	unsigned long flags1, flags2;
 	int rc = 0;
-	lock_flows_and_pp_sessions();
+
+	spin_lock_irqsave(&flows_lock, flags1);
+	spin_lock_irqsave(&pp_sessions_lock, flags2);
+
 	rc = func(data);
-	unlock_flows_and_pp_sessions();
+
+	spin_unlock_irqrestore(&pp_sessions_lock, flags2);
+	spin_unlock_irqrestore(&flows_lock, flags1);
+
 	return rc;
 }
 EXPORT_SYMBOL(with_db_locked);
@@ -508,16 +524,4 @@ static bool is_eligible_for_update(u32 pp_session, u64 current_time,
 		return true;
 
 	return false;
-}
-
-static void lock_flows_and_pp_sessions()
-{
-	spin_lock(&flows_lock);
-	spin_lock(&pp_sessions_lock);
-}
-
-static void unlock_flows_and_pp_sessions()
-{
-	spin_unlock(&pp_sessions_lock);
-	spin_unlock(&flows_lock);
 }
