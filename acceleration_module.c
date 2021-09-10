@@ -78,29 +78,23 @@ static struct genl_ops pp_am_ops[] = { {
 } };
 
 static pp_am_status_ret dummy_session_create (struct pm_am_session *request);
-static pp_am_status_ret dummy_session_modify_multicast (struct pm_am_session *old_session,
-        struct pm_am_session *session);
 static pp_am_status_ret dummy_session_delete(Uint32 session_handle,
         struct pp_am_pp_session_stats *session_stats);
-static pp_am_status_ret dummy_session_delete_multicast(struct pm_am_session *session);
-static pp_am_status_ret dummy_add_multicast_members(struct pm_am_session *session);
 static pp_am_status_ret dummy_get_session_info(Uint32 session_handle,
         struct pp_am_pp_session_stats *session_stats);
-
 static pp_am_status_ret dummy_skb_preprocess(pp_am_skb_process_action action,
         u32 ufid[4], u32 pp_am_id, struct sk_buff *skb);
 static pp_am_status_ret dummy_skb_postprocess(pp_am_skb_process_action action,
         u32 ufid[4], u32 pp_am_id, struct sk_buff *skb);
+static pp_am_status_ret dummy_send_multicast_event(pp_am_port_event_type type, struct pp_am_multicast_event_msg *msg);
 
 static struct acceleration_module_ops default_fops = {
     .session_create = dummy_session_create,
-    .session_modify_multicast = dummy_session_modify_multicast,
     .session_delete = dummy_session_delete,
-    .session_delete_multicast = dummy_session_delete_multicast,
-    .add_multicast_members = dummy_add_multicast_members,
     .get_session_info = dummy_get_session_info,
     .pp_am_skb_preprocess = dummy_skb_preprocess,
-    .pp_am_skb_postprocess = dummy_skb_postprocess
+    .pp_am_skb_postprocess = dummy_skb_postprocess,
+    .send_multicast_event = dummy_send_multicast_event,
 };
 
 static struct acceleration_module_ops * fops = &(struct acceleration_module_ops) {0};
@@ -179,7 +173,7 @@ pp_am_status_ret pp_am_create_session(struct pm_am_session *session,
 				      u32 *pp_am_id)
 {
 	struct pp_am_db_session_entry entry = { 0 };
-	pp_am_status_ret rc;
+	pp_am_status_ret rc = PP_AM_OK;
 
 	if (session == NULL || pp_am_id == NULL) {
 		AM_LOG_ERR("%s: Failed to create session: session=%p, pp_am_id=%p\n",
@@ -189,36 +183,13 @@ pp_am_status_ret pp_am_create_session(struct pm_am_session *session,
 
 	*pp_am_id = PP_AM_DB_MAX_SESSION;
 
-	// FIXME workaround before OVS is fixed
-	// (multicast and zero egress ports are mutually exclusive)
-	if (session->routing == PP_AM_MULTICAST &&
-	    session->match.egress_ports_len != 0) {
-		if (fops->add_multicast_members)
-		{
-			rc = fops->add_multicast_members(session);
-			if (rc != PP_AM_OK) {
-				AM_LOG_ERR("%s: Failed to create multicast PP session: rc=%d\n", __func__, rc);
-				return PP_AM_GENERIC_FAIL;
-			}
-		}
-	}
-
 	if (session->proactive_session && fops->session_create) {
 		rc = fops->session_create(session);
-		if (rc != PP_AM_OK) {
+		if (rc != PP_AM_OK)
 			AM_LOG_ERR("%s: Failed to create PP session: rc=%d\n", __func__, rc);
-			return PP_AM_GENERIC_FAIL;
-		}
 	}
 
-	// FIXME workaround before OVS is fixed
-	// (multicast and zero egress ports are mutually exclusive)
-	if (session->routing == PP_AM_MULTICAST &&
-	    session->match.egress_ports_len != 0) {
-		AM_LOG_DBG("%s: Added multicast session %u\n", __func__, *pp_am_id);
-	}
-
-	return PP_AM_OK;
+	return rc;
 }
 EXPORT_SYMBOL(pp_am_create_session);
 
@@ -228,84 +199,65 @@ pp_am_status_ret pp_am_modify_session(struct pm_am_session *old_session,
 {
 	struct pp_am_db_session_entry flow = { 0 };
 	struct pp_am_stats stats = { 0 };
-	pp_am_status_ret rc = PP_AM_OK;
+	pp_am_status_ret ret = PP_AM_OK;
 
 	if (session == NULL || pp_am_id == NULL)
 		return PP_AM_GENERIC_FAIL;
 
-	if (*pp_am_id != PP_AM_DB_MAX_SESSION
-			&& pp_am_db_flow_get(&flow, *pp_am_id) != PP_AM_OK)
+	if (*pp_am_id == PP_AM_DB_MAX_SESSION)
+		return PP_AM_OK;
+
+	if (pp_am_db_flow_get(&flow, *pp_am_id) != PP_AM_OK)
 		return PP_AM_GENERIC_FAIL;
 
-	// FIXME workaround before OVS is fixed
-	// (multicast and zero egress ports are mutually exclusive)
-	if (session->routing == PP_AM_MULTICAST &&
-	    session->match.egress_ports_len != 0) {
-		struct pp_am_ip_addr egress_dst_ip;
-
-		AM_LOG_DBG("modifying multicast session\n");
-
-		if(fops->session_modify_multicast)
-		{
-			rc = fops->session_modify_multicast(old_session, session);
-			if (rc != PP_AM_OK) {
-				AM_LOG_ERR("%s: Failed to modify session: rc=%d\n", __func__, rc);
-				if (*pp_am_id != PP_AM_DB_MAX_SESSION) {
-					pp_am_db_flow_rm(&flow, *pp_am_id);
-				}
-				return PP_AM_GENERIC_FAIL;
-			}
-		}
-	}
-
-	if (*pp_am_id != PP_AM_DB_MAX_SESSION 
-				  && flow.pp_session_handle != PP_AM_DB_MAX_SESSION) {
+	if (*pp_am_id != PP_AM_DB_MAX_SESSION && flow.pp_session_handle != PP_AM_DB_MAX_SESSION) {
 		struct pp_am_db_pp_entry pp_entry = { 0 };
 		struct pp_am_pp_session_stats session_stats;
 		pp_entry.pp_session = flow.pp_session_handle;
 
-		// FIXME workaround before OVS is fixed
-		// (multicast and zero egress ports are mutually exclusive)
-		if (!(session->routing == PP_AM_MULTICAST &&
-		      session->match.egress_ports_len != 0)) {
-			if (fops->session_delete &&
-                    fops->session_delete(flow.pp_session_handle,
-						&session_stats) != PP_AM_OK)
-				return PP_AM_GENERIC_FAIL;
+		if (fops->session_delete &&
+		    fops->session_delete(flow.pp_session_handle,
+					&session_stats) != PP_AM_OK)
+			return PP_AM_GENERIC_FAIL;
 
-			stats.bytes = session_stats.bytes;
-			stats.packets = session_stats.packets;
-			stats.last_used = get_jiffies_64();
-			if (pp_am_db_update_stats(flow.pp_session_handle, stats, true) != PP_AM_OK) {
-				AM_LOG_ERR(
-					"%s: Failed to update stats for session %u via DB",
-					__func__, flow.pp_session_handle);
-				return PP_AM_GENERIC_FAIL;
-			}
-
-			pp_am_db_flow_chain_cleanup(flow.prev, TRAVERSE_BACKWARD);
-			pp_am_db_flow_chain_cleanup(flow.next, TRAVERSE_FORWARD);
-
-			if (pp_am_db_pp_session_rm(&pp_entry) != PP_AM_OK)
-				return PP_AM_GENERIC_FAIL;
+		stats.bytes = session_stats.bytes;
+		stats.packets = session_stats.packets;
+		stats.last_used = get_jiffies_64();
+		if (pp_am_db_update_stats(flow.pp_session_handle, stats, true) != PP_AM_OK) {
+			AM_LOG_ERR(
+				"%s: Failed to update stats for session %u via DB",
+				__func__, flow.pp_session_handle);
+			return PP_AM_GENERIC_FAIL;
 		}
+
+		pp_am_db_flow_chain_cleanup(flow.prev, TRAVERSE_BACKWARD);
+		pp_am_db_flow_chain_cleanup(flow.next, TRAVERSE_FORWARD);
+
+		if (pp_am_db_pp_session_rm(&pp_entry) != PP_AM_OK)
+			return PP_AM_GENERIC_FAIL;
 	}
 
 	if (flow.is_proactive) {
-		// FIXME workaround before OVS is fixed
-		// (multicast and zero egress ports are mutually exclusive)
-		if (!(session->routing == PP_AM_MULTICAST &&
-		      session->match.egress_ports_len != 0)) {
-			if (fops->session_create)
-				fops->session_create(session);
+		if (session->routing != PP_AM_MULTICAST) {
+			pp_am_status_ret rc = PP_AM_OK;
+			if (fops->session_create) {
+				rc = fops->session_create(session);
+				if (rc != PP_AM_OK)
+					ret = rc;
+			}
 		}
 	}
 
+	// we should run this regardless of return code of session_create above
 	flow.pp_session_handle = PP_AM_DB_MAX_SESSION;
-	if (pp_am_db_flow_set(&flow, *pp_am_id) != PP_AM_OK)
-		return PP_AM_GENERIC_FAIL;
+	if (pp_am_db_flow_set(&flow, *pp_am_id) != PP_AM_OK) {
+		// only change return code if it wasn't changed before
+		// we need to preserve return code of session_create
+		if (ret == PP_AM_OK)
+			ret = PP_AM_GENERIC_FAIL;
+	}
 
-	return PP_AM_OK;
+	return ret;
 }
 EXPORT_SYMBOL(pp_am_modify_session);
 
@@ -322,8 +274,6 @@ pp_am_status_ret pp_am_delete_session(struct pm_am_session *session, u32 pp_am_i
 	if (pp_am_id == PP_AM_DB_MAX_SESSION) {
 		if (session->routing == PP_AM_MULTICAST) {
 			memset(stats_out, 0, sizeof(*stats_out));
-            if (fops->session_delete_multicast)
-                fops->session_delete_multicast(session);
 			return PP_AM_OK;
 		} else {
 			return PP_AM_GENERIC_FAIL;
@@ -333,8 +283,8 @@ pp_am_status_ret pp_am_delete_session(struct pm_am_session *session, u32 pp_am_i
 	if (pp_am_db_flow_get(&flow, pp_am_id) != PP_AM_OK)
 		return PP_AM_GENERIC_FAIL;
 
-	AM_LOG_DBG("%s: Removing session: pp_session_handle=%u, pp_am_id=%u, next=%u, prev=%u",
-			__func__, flow.pp_session_handle, pp_am_id, flow.next, flow.prev);
+	AM_LOG_DBG("%s: Removing session: pp_session_handle=%u, pp_am_id=%u, next=%u, prev=%u; stats: p: %llu b: %llu, old: %u ;",
+			__func__, flow.pp_session_handle, pp_am_id, flow.next, flow.prev, flow.stats.packets, flow.stats.bytes, jiffies_to_msecs(get_jiffies_64() - flow.stats.last_used));
 
 	pp_am_db_flow_chain_cleanup(flow.prev, TRAVERSE_BACKWARD);
 	pp_am_db_flow_chain_cleanup(flow.next, TRAVERSE_FORWARD);
@@ -345,15 +295,8 @@ pp_am_status_ret pp_am_delete_session(struct pm_am_session *session, u32 pp_am_i
 		struct pp_am_stats stats;
 		pp_am_status_ret rc;
 
-		if (session->routing == PP_AM_MULTICAST) {
-            if (fops->get_session_info)
-                rc = fops->get_session_info(flow.pp_session_handle, &session_stats);
-            if (fops->session_delete_multicast)
-                fops->session_delete_multicast(session);
-		} else {
-            if (fops->session_delete)
-                rc = fops->session_delete(flow.pp_session_handle, &session_stats);
-		}
+		if (fops->session_delete)
+			rc = fops->session_delete(flow.pp_session_handle, &session_stats);
 
 		stats.bytes = session_stats.bytes;
 		stats.packets = session_stats.packets;
@@ -432,29 +375,28 @@ pp_am_status_ret pp_am_skb_postprocess(pp_am_skb_process_action action,
 }
 EXPORT_SYMBOL(pp_am_skb_postprocess);
 
-static pp_am_status_ret dummy_session_create (struct pm_am_session *request)
+pp_am_status_ret pp_am_port_event(pp_am_port_event_type type, struct pp_am_multicast_event_msg *msg)
 {
-    return PP_AM_OK;
-}
+	pp_am_status_ret rc = PP_AM_OK;
+	if (msg == NULL || type == PP_AM_UNKNOWN_PORT_EVENT)
+		return PP_AM_GENERIC_FAIL;
 
-static pp_am_status_ret dummy_session_modify_multicast (struct pm_am_session *old_session,
-        struct pm_am_session *session)
+	rc = fops->send_multicast_event(type, msg);
+	if (rc != PP_AM_OK) {
+		AM_LOG("%s: Failed to send multicast event: rc=%d\n", __func__, rc);
+		return rc;
+	}
+	return PP_AM_OK;
+}
+EXPORT_SYMBOL(pp_am_port_event);
+
+static pp_am_status_ret dummy_session_create (struct pm_am_session *request)
 {
     return PP_AM_OK;
 }
 
 static pp_am_status_ret dummy_session_delete(Uint32 session_handle,
         struct pp_am_pp_session_stats *session_stats)
-{
-    return PP_AM_OK;
-}
-
-static pp_am_status_ret dummy_session_delete_multicast(struct pm_am_session *session)
-{
-    return PP_AM_OK;
-}
-
-static pp_am_status_ret dummy_add_multicast_members(struct pm_am_session *session)
 {
     return PP_AM_OK;
 }
@@ -473,6 +415,11 @@ static pp_am_status_ret dummy_skb_preprocess(pp_am_skb_process_action action,
 
 static pp_am_status_ret dummy_skb_postprocess(pp_am_skb_process_action action,
         u32 ufid[4], u32 pp_am_id, struct sk_buff *skb)
+{
+    return PP_AM_OK;
+}
+
+static pp_am_status_ret dummy_send_multicast_event(pp_am_port_event_type type, struct pp_am_multicast_event_msg *msg)
 {
     return PP_AM_OK;
 }

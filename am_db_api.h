@@ -25,14 +25,6 @@
 
 #define PP_AM_DB_MAX_SESSION (35 * 1024)
 
-struct pp_am_ip_addr {
-	union {
-		struct in_addr ipv4;
-		struct in6_addr ipv6;
-	};
-	u16 eth_proto;
-};
-
 struct pp_am_pp_session_stats {
 	u64 bytes;
 	u64 packets;
@@ -59,6 +51,7 @@ struct update_stats_data {
 	u32 pp_session;
 	struct pp_am_stats stats;
 	bool update_last_used;
+	bool updated_out;
 };
 
 pp_am_status_ret pp_am_db_init(void);

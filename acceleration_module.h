@@ -33,6 +33,8 @@ typedef enum {
 	PP_AM_NO_SESSIONS_LEFT,
 	PP_AM_UNSUPPORTED_PARAM,
 	PP_AM_GENERIC_FAIL,
+	PP_AM_STATS_NOT_UPDATED,
+	PP_AM_NO_SUCH_SESSION,
 } pp_am_status_ret;
 
 typedef enum {
@@ -82,6 +84,25 @@ struct pp_am_stats {
 	u64 last_used;
 };
 
+typedef enum pp_am_port_event_type {
+        PP_AM_UNKNOWN_PORT_EVENT,
+        PP_AM_MULTICAST_JOIN,
+        PP_AM_MULTICAST_LEAVE,
+} pp_am_port_event_type;
+
+struct pp_am_ip_addr {
+	union {
+		struct in_addr ipv4;
+		struct in6_addr ipv6;
+	};
+	u16 eth_proto;
+};
+
+struct pp_am_multicast_event_msg {
+	int ifindex;
+	struct pp_am_ip_addr ip;
+};
+
 struct pp_am_db_session_entry;
 struct pp_am_ip_addr;
 
@@ -100,6 +121,7 @@ pp_am_status_ret pp_am_skb_preprocess(pp_am_skb_process_action action,
 pp_am_status_ret pp_am_skb_postprocess(pp_am_skb_process_action action,
 				       u32 ufid[4], u32 pp_am_id, struct sk_buff *skb);
 void pp_am_set_am_id_by_ufid_callback(pp_am_set_am_id_by_ufid_t callback);
+pp_am_status_ret pp_am_port_event(pp_am_port_event_type type, struct pp_am_multicast_event_msg *msg);
 
 pp_am_status_ret pp_am_cleanup_flow_chain(u32 pp_am_id, pp_am_flow_chain_traverse_order traverse_order);
 pp_am_status_ret pp_am_flow_key_to_am_ip_addr(struct pp_am_flow_key *flow_key, 

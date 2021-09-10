@@ -366,6 +366,7 @@ pp_am_status_ret pp_am_db_update_stats(u32 pp_session, struct pp_am_stats stats,
 		.pp_session = pp_session,
 		.stats = stats,
 		.update_last_used = update_last_used,
+		.updated_out = false,
 	};
 	return with_db_locked(update_stats_unsafe, &data);
 }
@@ -380,6 +381,8 @@ int update_stats_unsafe(void *data)
 	u32 pp_session = ((struct update_stats_data*)data)->pp_session;
 	struct pp_am_stats stats = ((struct update_stats_data*)data)->stats;
 	const bool update_last_used = ((struct update_stats_data*)data)->update_last_used;
+	bool *updated = &(((struct update_stats_data*)data)->updated_out);
+	*updated = false;
 
 	if (pp_session <= 0 || pp_session >= PP_AM_DB_MAX_SESSION)
 		return PP_AM_GENERIC_FAIL;
@@ -393,13 +396,16 @@ int update_stats_unsafe(void *data)
 				   flows[am_id].busy);
 			continue;
 		}
-		update_stats_single_flow_unsafe(&flows[am_id].data, stats, update_last_used);
+		if (update_stats_single_flow_unsafe(&flows[am_id].data, stats, update_last_used) == PP_AM_OK)
+			*updated = true;
 	}
 
 	return PP_AM_OK;
 }
 EXPORT_SYMBOL(update_stats_unsafe);
 
+// Collects PP sessions suitable to update stats iterating from
+// "last_handle" position up to PP_AM_DB_MAX_SESSION
 size_t for_each_pp_entry_that_needs_update(
 	void (*func)(struct pp_am_db_pp_entry *entry), size_t requested_amount,
 	u32 *last_handle)
@@ -415,7 +421,7 @@ size_t for_each_pp_entry_that_needs_update(
 	if (pp_size < requested_amount)
 		requested_amount = pp_size;
 	AM_LOG_DBG("%s: requested size=%u\n", __func__, requested_amount);
-	while (eligible_session_amount < requested_amount) {
+	while (eligible_session_amount < requested_amount && current_session < PP_AM_DB_MAX_SESSION) {
 		if ((pp_entries[current_session].am_id !=
 		     PP_AM_DB_MAX_SESSION) &&
 		    (pp_entries[current_session].am_id != 0)) {
@@ -431,13 +437,13 @@ size_t for_each_pp_entry_that_needs_update(
 					pp_entries[current_session].am_id);
 				func(&pp_entries[current_session]);
 				eligible_session_amount++;
-			}
+			} else {
+                u32 am_id = pp_entries[current_session].am_id;
+                AM_LOG_DBG("current_session %u / flow %u is NOT eligible; last_pp_stats: {packets:%llu, bytes:%llu}; flow stats: {packets:%llu, bytes:%llu} current_time: %u last_used: %u \n",
+                        current_session, pp_entries[current_session].am_id, flows[am_id].data.last_pp_stats.packets, flows[am_id].data.last_pp_stats.bytes, flows[am_id].data.stats.packets, flows[am_id].data.stats.bytes, jiffies_to_msecs(current_time), jiffies_to_msecs(flows[am_id].data.stats.last_used));
+            }
 		}
 		current_session++;
-		if (current_session == PP_AM_DB_MAX_SESSION)
-			current_session = 0;
-		if (current_session == *last_handle)
-			break;
 	}
 
 	spin_unlock_irqrestore(&pp_sessions_lock, flags2);
@@ -471,6 +477,7 @@ update_stats_single_flow_unsafe(struct pp_am_db_session_entry *flow,
 				bool update_last_used)
 {
 	struct pp_am_pp_session_stats pp_stats_diff;
+	pp_am_status_ret ret = PP_AM_OK;
 
 	if (PP_AM_DB_MAX_SESSION != flow->pp_session_handle) {
 		STATS_SUB(pp_stats_diff, new_pp_stats, flow->last_pp_stats);
@@ -490,17 +497,19 @@ update_stats_single_flow_unsafe(struct pp_am_db_session_entry *flow,
 				pp_stats_diff.bytes, pp_stats_diff.packets,
 				flow->stats.bytes, flow->stats.packets);
 		} else {
+			ret = PP_AM_STATS_NOT_UPDATED;
 			AM_LOG_DBG(
 				"%s: Flow stats not changed: pp_session_handle=%u, new_stats={bytes: %llu, packets: %llu}",
 				__func__, flow->pp_session_handle,
 				new_pp_stats.bytes, new_pp_stats.packets);
 		}
 	} else {
+		ret = PP_AM_NO_SUCH_SESSION;
 		AM_LOG_DBG("%s: Session not found: pp_session_handle=%u",
 			   __func__, flow->pp_session_handle);
 	}
 
-	return PP_AM_OK;
+	return ret;
 }
 
 static bool is_eligible_for_update(u32 pp_session, u64 current_time,
