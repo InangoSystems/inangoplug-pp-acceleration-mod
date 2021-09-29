@@ -106,7 +106,7 @@ struct pp_am_multicast_event_msg {
 struct pp_am_db_session_entry;
 struct pp_am_ip_addr;
 
-typedef int (*pp_am_set_am_id_by_ufid_t)(u32 ufid[PP_AM_MAX_UFID_LENGTH], u32 am_id, u32 *old_am_id);
+typedef int (*pp_am_set_am_id_by_ufid_t)(u32 ufid[PP_AM_MAX_UFID_LENGTH], u32 am_id, u32 *old_am_id, u32 session_timeout);
 extern pp_am_set_am_id_by_ufid_t pp_am_set_am_id_by_ufid;
 
 pp_am_status_ret pp_am_create_session(struct pm_am_session *session, u32 *pp_am_id);
