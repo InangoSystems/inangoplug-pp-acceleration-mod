@@ -87,6 +87,7 @@ static pp_am_status_ret dummy_skb_preprocess(pp_am_skb_process_action action,
 static pp_am_status_ret dummy_skb_postprocess(pp_am_skb_process_action action,
         u32 ufid[4], u32 pp_am_id, struct sk_buff *skb);
 static pp_am_status_ret dummy_send_multicast_event(pp_am_port_event_type type, struct pp_am_multicast_event_msg *msg);
+static bool dummy_can_accelerate_ports(const unsigned int *ports, const size_t ports_len);
 
 static struct acceleration_module_ops default_fops = {
     .session_create = dummy_session_create,
@@ -95,6 +96,7 @@ static struct acceleration_module_ops default_fops = {
     .pp_am_skb_preprocess = dummy_skb_preprocess,
     .pp_am_skb_postprocess = dummy_skb_postprocess,
     .send_multicast_event = dummy_send_multicast_event,
+    .can_accelerate_ports = dummy_can_accelerate_ports,
 };
 
 static struct acceleration_module_ops * fops = &(struct acceleration_module_ops) {0};
@@ -390,6 +392,13 @@ pp_am_status_ret pp_am_port_event(pp_am_port_event_type type, struct pp_am_multi
 }
 EXPORT_SYMBOL(pp_am_port_event);
 
+bool can_accelerate_ports(const unsigned int *ports, const size_t ports_len)
+{
+
+	return fops->can_accelerate_ports(ports, ports_len);
+}
+EXPORT_SYMBOL(can_accelerate_ports);
+
 static pp_am_status_ret dummy_session_create (struct pm_am_session *request)
 {
     return PP_AM_OK;
@@ -422,6 +431,11 @@ static pp_am_status_ret dummy_skb_postprocess(pp_am_skb_process_action action,
 static pp_am_status_ret dummy_send_multicast_event(pp_am_port_event_type type, struct pp_am_multicast_event_msg *msg)
 {
     return PP_AM_OK;
+}
+
+static bool dummy_can_accelerate_ports(const unsigned int *ports, const size_t ports_len)
+{
+    return true;
 }
 
 pp_am_status_ret acceleration_module_register(struct acceleration_module_ops *ops)

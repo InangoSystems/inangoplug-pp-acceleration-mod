@@ -38,6 +38,7 @@ struct acceleration_module_ops {
     pp_am_status_ret (*pp_am_skb_preprocess)(pp_am_skb_process_action action,
         u32 ufid[4], u32 pp_am_id, struct sk_buff *skb);
     pp_am_status_ret (*send_multicast_event)(pp_am_port_event_type type, struct pp_am_multicast_event_msg *msg);
+    bool (*can_accelerate_ports)(const unsigned int *ports, const size_t ports_len);
 };
 
 pp_am_status_ret acceleration_module_register(struct acceleration_module_ops *ops);
