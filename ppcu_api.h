@@ -34,7 +34,7 @@ struct acceleration_module_ops {
     pp_am_status_ret (*get_session_info)(Uint32 session_handle,
         struct pp_am_pp_session_stats *session_stats);
     pp_am_status_ret (*pp_am_skb_postprocess)(pp_am_skb_process_action action,
-        u32 ufid[4], u32 pp_am_id, struct sk_buff *skb);
+        u8 local, u32 ufid[4], u32 pp_am_id, struct sk_buff *skb);
     pp_am_status_ret (*pp_am_skb_preprocess)(pp_am_skb_process_action action,
         u32 ufid[4], u32 pp_am_id, struct sk_buff *skb);
     pp_am_status_ret (*send_multicast_event)(pp_am_port_event_type type, struct pp_am_multicast_event_msg *msg);
