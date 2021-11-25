@@ -319,6 +319,8 @@ pp_am_status_ret pp_am_delete_session(struct pm_am_session *session, u32 pp_am_i
 			return PP_AM_GENERIC_FAIL;
 	}
 
+	*stats_out = flow.stats;
+
 	if (pp_am_db_flow_rm(&flow, pp_am_id) != PP_AM_OK)
 		return PP_AM_GENERIC_FAIL;
 
