@@ -84,7 +84,7 @@ static pp_am_status_ret dummy_get_session_info(Uint32 session_handle,
         struct pp_am_pp_session_stats *session_stats);
 static pp_am_status_ret dummy_skb_preprocess(pp_am_skb_process_action action,
         u32 ufid[4], u32 pp_am_id, struct sk_buff *skb);
-static pp_am_status_ret dummy_skb_postprocess(pp_am_skb_process_action action, u8 local,
+static pp_am_status_ret dummy_skb_postprocess(pp_am_skb_process_action action, void *data,
         u32 ufid[4], u32 pp_am_id, struct sk_buff *skb);
 static pp_am_status_ret dummy_send_multicast_event(pp_am_port_event_type type, struct pp_am_multicast_event_msg *msg);
 static bool dummy_can_accelerate_ports(const unsigned int *ports, const size_t ports_len);
@@ -372,10 +372,10 @@ pp_am_status_ret pp_am_skb_preprocess(pp_am_skb_process_action action,
 EXPORT_SYMBOL(pp_am_skb_preprocess);
 
 pp_am_status_ret pp_am_skb_postprocess(pp_am_skb_process_action action,
-				       u8 local, u32 ufid[4], u32 pp_am_id,
+				       void *data, u32 ufid[4], u32 pp_am_id,
 				       struct sk_buff *skb)
 {
-	return fops->pp_am_skb_postprocess(action, local, ufid, pp_am_id, skb);
+	return fops->pp_am_skb_postprocess(action, data, ufid, pp_am_id, skb);
 }
 EXPORT_SYMBOL(pp_am_skb_postprocess);
 
@@ -425,7 +425,7 @@ static pp_am_status_ret dummy_skb_preprocess(pp_am_skb_process_action action,
 }
 
 static pp_am_status_ret dummy_skb_postprocess(pp_am_skb_process_action action,
-        u8 local, u32 ufid[4], u32 pp_am_id, struct sk_buff *skb)
+        void *data, u32 ufid[4], u32 pp_am_id, struct sk_buff *skb)
 {
     return PP_AM_OK;
 }

@@ -45,6 +45,7 @@ typedef enum {
 	PP_AM_SET_SKIP,
 	PP_AM_SET_FORWARD_UDP,
 	PP_AM_SET_MCAST_FLOOD,
+	PP_AM_SET_MCAST_PORT_OUTPUT,
 } pp_am_skb_process_action;
 
 typedef enum {
@@ -104,6 +105,11 @@ struct pp_am_multicast_event_msg {
 	struct pp_am_ip_addr ip;
 };
 
+struct pp_am_mcast_port_output {
+	int  ifindex;
+	__u8 host_mac[ETH_ALEN];
+};
+
 struct pp_am_db_session_entry;
 struct pp_am_ip_addr;
 
@@ -120,7 +126,7 @@ pp_am_status_ret pp_am_get_session_stats(struct pp_am_flow_id *ufid,u32 pp_am_id
 pp_am_status_ret pp_am_skb_preprocess(pp_am_skb_process_action action,
 				      u32 ufid[4], u32 pp_am_id, struct sk_buff *skb);
 pp_am_status_ret pp_am_skb_postprocess(pp_am_skb_process_action action,
-				       u8 local, u32 ufid[4], u32 pp_am_id, struct sk_buff *skb);
+				       void *data, u32 ufid[4], u32 pp_am_id, struct sk_buff *skb);
 void pp_am_set_am_id_by_ufid_callback(pp_am_set_am_id_by_ufid_t callback);
 pp_am_status_ret pp_am_port_event(pp_am_port_event_type type, struct pp_am_multicast_event_msg *msg);
 bool can_accelerate_ports(const unsigned int *ports, const size_t ports_len);
