@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * ppcu_api.h: PP command unit platform independent API.
- * Copyright (C) 2021 Inango Systems Ltd.
+ * Copyright (C) 2021, 2022 Inango Systems Ltd.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public

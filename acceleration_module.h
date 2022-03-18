@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * acceleration_module.h: public interfaces of PP AM
- * Copyright (C) 2021 Inango Systems Ltd.
+ * Copyright (C) 2021, 2022 Inango Systems Ltd.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public
@@ -22,31 +22,12 @@
 #define __ACCELERATION_MODULE_H__
 
 #include "acceleration_module_proto.h"
+#include <linux/openvswitch.h>
 
 #define PP_AM_EGRESS_PORTS_MAX 52
 
 #define PP_AM_ZERO_UFID ((u32[PP_AM_MAX_UFID_LENGTH]){0, 0, 0, 0})
 #define PP_AM_SIZEOF_UFID sizeof(PP_AM_ZERO_UFID)
-
-typedef enum {
-	PP_AM_OK,
-	PP_AM_NO_SESSIONS_LEFT,
-	PP_AM_UNSUPPORTED_PARAM,
-	PP_AM_GENERIC_FAIL,
-	PP_AM_STATS_NOT_UPDATED,
-	PP_AM_NO_SUCH_SESSION,
-} pp_am_status_ret;
-
-typedef enum {
-	PP_AM_UNDEFINED = 0, // NOP
-	PP_AM_SET_OUTPUT,
-	PP_AM_SET_DROP,
-	PP_AM_SET_FLOOD,
-	PP_AM_SET_SKIP,
-	PP_AM_SET_FORWARD_UDP,
-	PP_AM_SET_MCAST_FLOOD,
-	PP_AM_SET_MCAST_PORT_OUTPUT,
-} pp_am_skb_process_action;
 
 typedef enum {
 	PP_AM_UNKNOWN_ROUTING_TYPE = 0,
@@ -78,36 +59,6 @@ struct pm_am_session {
 	long long int hard_timeout;
 	bool proactive_session;
 	pp_am_routing_type routing;
-};
-
-struct pp_am_stats {
-	u64 packets;
-	u64 bytes;
-	u64 last_used;
-};
-
-typedef enum pp_am_port_event_type {
-        PP_AM_UNKNOWN_PORT_EVENT,
-        PP_AM_MULTICAST_JOIN,
-        PP_AM_MULTICAST_LEAVE,
-} pp_am_port_event_type;
-
-struct pp_am_ip_addr {
-	union {
-		struct in_addr ipv4;
-		struct in6_addr ipv6;
-	};
-	u16 eth_proto;
-};
-
-struct pp_am_multicast_event_msg {
-	int ifindex;
-	struct pp_am_ip_addr ip;
-};
-
-struct pp_am_mcast_port_output {
-	int  ifindex;
-	__u8 host_mac[ETH_ALEN];
 };
 
 struct pp_am_db_session_entry;

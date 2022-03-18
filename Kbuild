@@ -2,7 +2,7 @@
 ################################################################################
 #
 #  Kbuild: Linux kernel Makefile for inangoplug-pp-acceleration-module
-#  Copyright (C) 2021 Inango Systems Ltd. 
+#  Copyright (C) 2021,2022 Inango Systems Ltd.
 #
 #  This program is free software; you can redistribute it and/or
 #  modify it under the terms of version 2 of the GNU General Public
@@ -22,6 +22,6 @@
 TARGET_ACCELERATION_MODULE := ovs_hw_acceleration
 obj-m := $(TARGET_ACCELERATION_MODULE).o
 
-ccflags-y += -Wno-unused
+ccflags-y += -Wno-unused -I$(KERNEL_SRC)/net/openvswitch
 
-$(TARGET_ACCELERATION_MODULE)-y := acceleration_module.o am_db_api.o
+$(TARGET_ACCELERATION_MODULE)-y := acceleration_module.o am_db_api.o ovs_dp_to_am.o

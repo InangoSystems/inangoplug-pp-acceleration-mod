@@ -19,7 +19,7 @@
 
 /*
  * Includes Inango Systems Ltd’s changes/modifications dated: 2021.
- * Changed/modified portions - Copyright (c) 2021 , Inango Systems Ltd.
+ * Changed/modified portions - Copyright (c) 2021, 2022 , Inango Systems Ltd.
  */
 
 #ifndef __AM_PROTO_H__
