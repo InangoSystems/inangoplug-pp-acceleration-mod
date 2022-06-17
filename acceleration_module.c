@@ -282,7 +282,7 @@ pp_am_status_ret ovs_am_modify_session(struct datapath *dp,
 	}
 	old_sess = (struct pm_am_session *)kmalloc(sizeof(struct pm_am_session),
 						   GFP_KERNEL);
-	if (old_sess) {
+	if (!old_sess) {
 		AM_LOG_ERR(
 			"%s: Unable to allocate memory for old_sess to translate\n",
 			__func__);
